@@ -21,7 +21,7 @@
 /**
  *  Return public 
  *
- *  @param DB $obj DB sub-class
+ *  @param DB &$obj DB sub-class
  *
  *  @return array
  */
@@ -37,20 +37,25 @@ function getProperties(DB &$obj)
  *  This base class provides a simple, extensible and efficient
  *  that maps a DB table into an object.
  *
+ *  @category DB
+ *  @package  SimpleORM
+ *  @author   César Rodas <crodas@member.fsf.org>
+ *  @license  PHP License <http://www.php.net/license/3_01.txt>
+ *  @link     http://cesar.la/projects/SimpleORM
  */
 abstract class DB implements Iterator, ArrayAccess
 {
-    private static $_dbh = false;
-    private static $_db='';
-    private static $_host='localhost';
-    private static $_user='';
-    private static $_pass='';
-    private static $_driver='mysql';
-    private $__updatable = true;
+    private static $_dbh    = false;
+    private static $_db     = '';
+    private static $_host   ='localhost';
+    private static $_user   ='';
+    private static $_pass   ='';
+    private static $_driver ='mysql';
+    private $__updatable    = true;
     private $__i;
     private $__upadate = false;
-    protected $__vars;
-    protected $__resultset = array();
+    private $__vars;
+    private $__resultset = array();
 
     // __construct() {{{
     /**
@@ -89,7 +94,8 @@ abstract class DB implements Iterator, ArrayAccess
      */
     private function _connect()
     {
-        self::$_dbh = new PDO(self::$_driver.':host='.self::$_host.';dbname='.self::$_db,
+        $connstr    = self::$_driver.':host='.self::$_host.';dbname='.self::$_db;
+        self::$_dbh = new PDO($connstr,
                 self::$_user,
                 self::$_pass, 
                 array(
@@ -108,7 +114,7 @@ abstract class DB implements Iterator, ArrayAccess
      *  where the key is the DB rows and the values the object's
      *  properties. This function could be overrided by a sub-class
      *
-     *  return array
+     *  @return array
      */
     protected function relations()
     {
@@ -134,7 +140,7 @@ abstract class DB implements Iterator, ArrayAccess
     final function save()
     {
         $values = array();
-        $this->__loadVars($values);
+        $this->_loadVars($values);
         if (isset($this->ID)) {
             if (!$this->__updatable) {
                 throw new Exception("Modifications not allowed");
@@ -150,14 +156,14 @@ abstract class DB implements Iterator, ArrayAccess
                     return;
                 }
             }
-            $this->Update($this->getTableName(), $values, array("id"=>$this->ID) );
+            $this->Update($this->getTableName(), $values, array("id"=>$this->ID));
         } else {
             $this->Insert($this->getTableName(), $values);
         }
     }
     // }}}
 
-    // __loadVars() {{{
+    // _loadVars() {{{
     /**
      *  Load all variables from the Objects to the DB
      *
@@ -165,7 +171,7 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    final private function __loadVars(&$values)
+    final private function _loadVars(&$values)
     {
         foreach ($this->relations() as $key => $value) {
             $value = $this->$value;
@@ -187,31 +193,29 @@ abstract class DB implements Iterator, ArrayAccess
      *  Passed an SQL that will be executed and its result will used as the
      *  the data source.
      *
-     *
      *  @param string   $sql       SQL code to execute, it could have variables
      *  @param array    $values    Variables referenced on the SQL
      *  @param bool     $updatable True if this SQL could be saved on the DB
-     *  @param callback $updatefnc Replace the default save() function 
+     *  @param callback $ufnc      Replace the default save() function 
      *
      *  @return void
      */
-    final protected function setDataSource($sql, $values=array(), $updatable=false, $updatefnc=false)
+    final protected function setDataSource($sql, $values=array(), $updatable=false, $ufnc=false)
     {
         if (self::$_dbh === false) {
             self::_connect();
         }
         if ($updatable) {
             $this->__update = false;
-            if ($updatefnc !== false && is_callable($updatefnc)) {
-                $this->__update = $updatefnc;
+            if ($ufnc !== false && is_callable($ufnc)) {
+                $this->__update = $ufnc;
             }
         }
-
-        $stmt = self::$_dbh->prepare($sql);
         $this->__updatable = $updatable;
+        $stmt              = self::$_dbh->prepare($sql);
         $stmt->execute($values);
         $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $this->Rewind();
+        $this->rewind();
     }
     // }}}
 
@@ -250,7 +254,7 @@ abstract class DB implements Iterator, ArrayAccess
         $values = array();
         $table  = $this->getTableName();
         $filter = "";
-        $this->__loadVars($values);
+        $this->_loadVars($values);
         if (isset($this->ID)) {
             $values['id'] = $this->ID;
         }
@@ -268,7 +272,7 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
-    // Insert() {{[
+    // Insert() {{{
     /**
      *  Insert a new row in the table
      *
@@ -277,10 +281,11 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    final protected function Insert($table, $rows) 
+    final protected function insert($table, $rows) 
     {
         $cols = array_keys($rows);
-        $sql  = "INSERT INTO `{$table}`(".implode(",", $cols).") VALUES(:".implode(",:", $cols).")";
+        $sql  = "INSERT INTO `{$table}`(".implode(",", $cols).") ";
+        $sql .= "VALUES(:".implode(",:", $cols).")";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
         $this->ID = self::$_dbh->lastInsertId();
@@ -297,7 +302,7 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    final protected function Update($table, $rows, $filters=array()) 
+    final protected function update($table, $rows, $filters=array()) 
     {
         if (!is_array($filters) || count($filters) == 0) {
             return false;
@@ -337,7 +342,7 @@ abstract class DB implements Iterator, ArrayAccess
     // }}}
 
     /* Iterator {{{ */
-    final function Rewind() 
+    final function rewind() 
     {
         $this->__i = 0;
         $this->current();
@@ -364,7 +369,7 @@ abstract class DB implements Iterator, ArrayAccess
         if (is_null($pzRecord)) {
             return true;
         }
-        $changes  = array();
+        $changes = array();
         foreach ($this->relations() as $key => $value) {
             if ($this->$value != $pzRecord[$key]) {
                 $changes[$key] = true;
@@ -388,6 +393,28 @@ abstract class DB implements Iterator, ArrayAccess
     }
 
     /* }}} */
+
+    // ArrayAccess {{{
+    final function offsetExists($key)
+    {
+        return isset($this->$key);
+    }
+
+    final function offsetGet($key)
+    {
+        return $this->$key;
+    }
+
+    final function offsetSet($key, $value)
+    {
+        $this->$key = $value;
+    }
+
+    final function offsetUnset($key)
+    {
+        $this->$key = null;
+    }
+    // }}}
 
 }
 
