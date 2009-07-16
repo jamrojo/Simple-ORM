@@ -47,10 +47,10 @@ abstract class DB implements Iterator, ArrayAccess
 {
     private static $_dbh    = false;
     private static $_db     = '';
-    private static $_host   ='localhost';
-    private static $_user   ='';
-    private static $_pass   ='';
-    private static $_driver ='mysql';
+    private static $_host   = 'localhost';
+    private static $_user   = '';
+    private static $_pass   = '';
+    private static $_driver = 'mysql';
     private $__updatable    = true;
     private $__i;
     private $__upadate = false;
@@ -59,8 +59,9 @@ abstract class DB implements Iterator, ArrayAccess
 
     // __construct() {{{
     /**
+     *  Class constructor
      *
-     *
+     *  @return void
      */
     final public function __construct()
     {
@@ -69,42 +70,87 @@ abstract class DB implements Iterator, ArrayAccess
     // }}}
 
     // setters {{{
+    /**
+     *  Set the DB username
+     *
+     *  @param string $user Username
+     *
+     *  @return void
+     */ 
     final public static function setUser($user)
     {
         self::$_user = $user;
     }
 
 
+    /**
+     *  Set the DB password, by default empty
+     *
+     *  @param string $pass Password
+     *
+     *  @return void
+     */ 
     final public static function setPassword($pass)
     {
         self::$_pass = $pass;
     }
 
+    /**
+     *  Set the DB name
+     *
+     *  @param string $db Database name
+     *
+     *  @return void
+     */ 
     final public static function setDb($db)
     {
         self::$_db = $db;
+    }
+
+    /**
+     *  Set the DB host, by default localhost
+     *
+     *  @param string $host Hostname
+     *
+     *  @return void
+     */ 
+    final public static function setHost($host)
+    {
+        self::$_host = $host;
+    }
+
+    /**
+     *  Set the DB PDO driver, by default mysq1
+     *
+     *  @param string $driver Drivername
+     *
+     *  @return void
+     */ 
+    final public static function setDriver($driver)
+    {
+        self::$_driver = $driver;
     }
     // }}}
 
     // _connect() {{{
     /**
-     *  Performs the connection to the DB, if it fails it throws an exception.
+     *  performs the connection to the db, if it fails it throws an exception.
      *
      *  @return void
      */
     private function _connect()
     {
         $connstr    = self::$_driver.':host='.self::$_host.';dbname='.self::$_db;
-        self::$_dbh = new PDO($connstr,
+        self::$_dbh = new pdo($connstr,
                 self::$_user,
                 self::$_pass, 
                 array(
-                    PDO::ATTR_PERSISTENT => false,
-                    PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
-                    PDO::ATTR_EMULATE_PREPARES => true
+                    pdo::ATTR_PERSISTENT => false,
+                    pdo::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+                    pdo::ATTR_EMULATE_PREPARES => true
                     )
                 );
-        self::$_dbh->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        self::$_dbh->setattribute(pdo::ATTR_ERRMODE, pdo::ERRMODE_EXCEPTION);
     }
     // }}}
 
@@ -139,13 +185,16 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final function save()
     {
+        if (self::$_dbh === false) {
+            self::_connect();
+        }
         $values = array();
         $this->_loadVars($values);
         if (isset($this->ID)) {
             if (!$this->__updatable) {
                 throw new Exception("Modifications not allowed");
             }
-            $changes = $this->getChanges();
+            $changes = $this->_getChanges();
             if (is_array($changes)) {
                 foreach (array_keys($values) as $val) {
                     if (!isset($changes[$val])) {
@@ -206,7 +255,6 @@ abstract class DB implements Iterator, ArrayAccess
             self::_connect();
         }
         if ($updatable) {
-            $this->__update = false;
             if ($ufnc !== false && is_callable($ufnc)) {
                 $this->__update = $ufnc;
             }
@@ -341,29 +389,16 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
-    /* Iterator {{{ */
-    final function rewind() 
-    {
-        $this->__i = 0;
-        $this->current();
-    }
-
-    final function next()
-    {
-        $this->__i++;
-    }
-
-    final function & current()
-    {
-        $pzRecord = & $this->__resultset[ $this->__i ];
-        foreach ((array)$pzRecord as $key => $value) {
-            $this->$key = $value;
-        }
-        $this->ID = $pzRecord['id'];
-        return $this;
-    }
-
-    final protected function getChanges()
+    // _getChanges() {{{
+    /**
+     *  Get Changes
+     *
+     *  Returns all the columns that has change in order to perform
+     *  an update.
+     *
+     *  @return bool|array True if there is no result, or the array of columns
+     */
+    final private function _getChanges()
     {
         $pzRecord = & $this->__resultset[ $this->__i ];
         if (is_null($pzRecord)) {
@@ -377,12 +412,83 @@ abstract class DB implements Iterator, ArrayAccess
         }
         return $changes;
     }
+    // }}}
 
+    // getOriginalValue() {{{
+    /**
+     *  Get Original value of a given column
+     *
+     *  @return string $key Column name
+     *
+     *  @return string|bool Column value or false
+     */
+    final protected function getOriginalValue($key)
+    {
+        if (!$this->valid()) {
+            return false;
+        }
+        $pzRecord = & $this->__resultset[ $this->__i ];
+        return isset($pzRecord[$key]) ? $pzRecord[$key] : false;
+    }
+    // }}}
+
+    /* Iterator {{{ */
+    /**
+     *  In a recordset iteration, it moves to the first result. This function
+     *  is used by the PHP Iterator
+     *
+     *  @return void
+     */
+    final function rewind() 
+    {
+        $this->__i = 0;
+        $this->current();
+    }
+
+    /**
+     *  In a recordset iteration, it moves to the next result. This function
+     *  is used by the PHP Iterator
+     *
+     *  @return void
+     */
+    final function next()
+    {
+        $this->__i++;
+    }
+
+    /**
+     *  In a recordset iteration, it return the actual result. This function
+     *  is used by the PHP Iterator
+     *
+     *  @return void
+     */
+    final function & current()
+    {
+        $pzRecord = & $this->__resultset[ $this->__i ];
+        foreach ((array)$pzRecord as $key => $value) {
+            $this->$key = $value;
+        }
+        $this->ID = $pzRecord['id'];
+        return $this;
+    }
+
+    /**
+     *  In a recordset iteration, it return the result position. This function
+     *  is used by the PHP Iterator
+     *
+     *  @return void
+     */
     final function key()
     {
         return $this->__i;
     }
 
+    /**
+     *  In a recordset iteration, it return the is the result is valid. This function
+     *  is used by the PHP Iterator
+     *
+     *  @return void
+     */
     final function valid()
     {
         $count = count($this->__resultset);
@@ -395,21 +501,50 @@ abstract class DB implements Iterator, ArrayAccess
     /* }}} */
 
     // ArrayAccess {{{
+    /**
+     *  In a resultset it return true if the the key exists as column name
+     *
+     *  @param string $key Column name
+     *
+     *  @return bool
+     */
     final function offsetExists($key)
     {
         return isset($this->$key);
     }
 
+    /**
+     *  In a resultset it return value
+     *
+     *  @param string $key Column name
+     *
+     *  @return string
+     */
     final function offsetGet($key)
     {
         return $this->$key;
     }
 
+    /**
+     *  In a resultset, it set override the value of the key
+     *
+     *  @param string $key   Column name
+     *  @param string $value Column value
+     *
+     *  @return string
+     */
     final function offsetSet($key, $value)
     {
         $this->$key = $value;
     }
 
+    /**
+     *  In a resultset it reset the value
+     *
+     *  @param string $key Column name
+     *
+     *  @return string
+     */
     final function offsetUnset($key)
     {
         $this->$key = null;
