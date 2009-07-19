@@ -14,7 +14,6 @@ $user->save();*/
 
 $users = new User;
 foreach ($users->load() as $user) {
-    $user['pass'] = 'newpass';
     $user->save();
 }
 ?>

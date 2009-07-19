@@ -17,6 +17,8 @@
    +----------------------------------------------------------------------+
 */
 
+require dirname(__FILE__)."/base_cache.php";
+
 // getProperties() {{{
 /**
  *  Return public 
@@ -51,6 +53,7 @@ abstract class DB implements Iterator, ArrayAccess
     private static $_user   = '';
     private static $_pass   = '';
     private static $_driver = 'mysql';
+    private static $_cache  = null;
     private $__updatable    = true;
     private $__i;
     private $__upadate = false;
@@ -157,7 +160,7 @@ abstract class DB implements Iterator, ArrayAccess
     // relations() {{{
     /**
      *  Return an Array of that has the DB to object mapping, 
-     *  where the key is the DB rows and the values the object's
+     *  where the key is the DB rows and the params the object's
      *  properties. This function could be overrided by a sub-class
      *
      *  @return array
@@ -188,26 +191,26 @@ abstract class DB implements Iterator, ArrayAccess
         if (self::$_dbh === false) {
             self::_connect();
         }
-        $values = array();
-        $this->_loadVars($values);
+        $params = array();
+        $this->_loadVars($params);
         if (isset($this->ID)) {
             if (!$this->__updatable) {
                 throw new Exception("Modifications not allowed");
             }
             $changes = $this->_getChanges();
             if (is_array($changes)) {
-                foreach (array_keys($values) as $val) {
+                foreach (array_keys($params) as $val) {
                     if (!isset($changes[$val])) {
-                        unset($values[$val]);
+                        unset($params[$val]);
                     }
                 }
-                if (count($values) == 0) {
+                if (count($params) == 0) {
                     return;
                 }
             }
-            $this->Update($this->getTableName(), $values, array("id"=>$this->ID));
+            $this->Update($this->getTableName(), $params, array("id"=>$this->ID));
         } else {
-            $this->Insert($this->getTableName(), $values);
+            $this->Insert($this->getTableName(), $params);
         }
     }
     // }}}
@@ -216,11 +219,11 @@ abstract class DB implements Iterator, ArrayAccess
     /**
      *  Load all variables from the Objects to the DB
      *
-     *  @param array &$values Target variable
+     *  @param array &$params Target variable
      *
      *  @return void
      */
-    final private function _loadVars(&$values)
+    final private function _loadVars(&$params)
     {
         foreach ($this->relations() as $key => $value) {
             $value = $this->$value;
@@ -230,7 +233,7 @@ abstract class DB implements Iterator, ArrayAccess
             if (is_callable(array(&$this, "${key}_filter"))) {
                 call_user_func_array(array(&$this, "${key}_filter"), array(&$value));
             }
-            $values[ $key ] = $value;
+            $params[ $key ] = $value;
         }
     }
     // }}}
@@ -243,26 +246,33 @@ abstract class DB implements Iterator, ArrayAccess
      *  the data source.
      *
      *  @param string   $sql       SQL code to execute, it could have variables
-     *  @param array    $values    Variables referenced on the SQL
+     *  @param array    $params    Variables referenced on the SQL
      *  @param bool     $updatable True if this SQL could be saved on the DB
      *  @param callback $ufnc      Replace the default save() function 
      *
      *  @return void
      */
-    final protected function setDataSource($sql, $values=array(), $updatable=false, $ufnc=false)
+    final protected function setDataSource($sql, $params=array(), $updatable=false, $ufnc=false)
     {
-        if (self::$_dbh === false) {
-            self::_connect();
-        }
+        $cacheable = $this->isCacheable($sql, $params, $ttl);
         if ($updatable) {
             if ($ufnc !== false && is_callable($ufnc)) {
                 $this->__update = $ufnc;
             }
         }
         $this->__updatable = $updatable;
-        $stmt              = self::$_dbh->prepare($sql);
-        $stmt->execute($values);
-        $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$cacheable || !$this->getFromCache($sql, $params, $this->__resultset)) 
+        {
+            if (self::$_dbh === false) {
+                self::_connect();
+            }
+            $stmt              = self::$_dbh->prepare($sql);
+            $stmt->execute($params);
+            $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($cacheable) {
+                $this->saveCache($sql, $params);
+            }
+        } 
         $this->rewind();
     }
     // }}}
@@ -275,17 +285,17 @@ abstract class DB implements Iterator, ArrayAccess
      *  result, it is returned.
      *
      *  @param string $sql    SQL to executed
-     *  @param array  $values Variables that might be refered on the SQL
+     *  @param array  $params Variables that might be refered on the SQL
      *  
      *  @return array
      */
-    final protected function simpleQuery($sql, $values=array()) 
+    final protected function simpleQuery($sql, $params=array()) 
     {
         if (self::$_dbh === false) {
             self::_connect();
         }
         $stmt = self::$_dbh->prepare($sql);
-        $stmt->execute($values);
+        $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     // }}}
@@ -294,28 +304,42 @@ abstract class DB implements Iterator, ArrayAccess
     /**
      *  Simple function to filter and load data from the DB.  It takes
      *  the variables from the object's properties. 
+     *  
+     *  @param int $cachettl Cache TTL (default -1, no cache)
      *
      *  @return object A reference to the class it self.
      */
     final public function & load()
     {
-        $values = array();
+        $params = array();
         $table  = $this->getTableName();
         $filter = "";
-        $this->_loadVars($values);
+        $this->_loadVars($params);
         if (isset($this->ID)) {
-            $values['id'] = $this->ID;
+            $params['id'] = $this->ID;
         }
 
-        foreach (array_keys($values) as $col) {
-            $filter .= " $col = :$col AND";
+        foreach (array_keys($params) as $col) {
+            if (is_array($params[$col])) {
+                $filter .= " $col in (";
+                foreach ($params[$col] as $key=>$value) {
+                    $nkey          = "{$col}{$key}";
+                    $filter       .= ":{$nkey},";
+                    $params[$nkey] = $value;
+                }
+                unset($params[$col]);
+                $filter  = substr($filter, 0, strlen($filter)-1);
+                $filter .= ") AND"; 
+            } else {
+                $filter .= " $col = :$col AND";
+            }
         }
         $sql = "SELECT * FROM `{$table}`";
         if (!empty($filter)) {
             $sql .= " WHERE $filter";
             $sql  = substr($sql, 0, strlen($sql) - 3);
         }
-        $this->setDataSource($sql, $values, true);
+        $this->setDataSource($sql, $params, true);
         return $this;
     }
     // }}}
@@ -325,7 +349,7 @@ abstract class DB implements Iterator, ArrayAccess
      *  Insert a new row in the table
      *
      *  @param string $table Table name
-     *  @param array  $rows  Columns names and values
+     *  @param array  $rows  Columns names and params
      *
      *  @return void
      */
@@ -345,7 +369,7 @@ abstract class DB implements Iterator, ArrayAccess
      *  Modified a row in the table.
      *
      *  @param string $table   Table name
-     *  @param array  $rows    Columns names and values
+     *  @param array  $rows    Columns names and params
      *  @param array  $filters Columns that are used as filter in the selection
      *
      *  @return void
@@ -418,7 +442,7 @@ abstract class DB implements Iterator, ArrayAccess
     /**
      *  Get Original value of a given column
      *
-     *  @return string $key Column name
+     *  @param string $key Column name
      *
      *  @return string|bool Column value or false
      */
@@ -551,7 +575,106 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
+    // setCacheHandler() {{{
+    /**
+     *  Set a Default DB Cache manager
+     *
+     *  @param BaseCache &$cache  DB Cache *object
+     *  @param bool      $replace True if the a previous defined Cache manager could be changed
+     *
+     *  @return bool True if success
+     */
+    final public static function setCacheHandler(BaseCache &$cache, $replace = false)
+    {
+        $dcache = & self::$_cache;
+        if (!$replace && $dcache InstanceOf BaseCache) {
+            return false;
+        }
+        $dcache = $cache;
+        return true;
+    }
+    // }}}
+
+    // getFromCache() {{{
+    /**
+     *  get the SQL result from Cache
+     *
+     *  @param string $sql      SQL code to execute, it could have variables
+     *  @param array  $params   Variables referenced on the SQL
+     *  @param array  &$results Resultset destination
+     *  
+     *  @return bool
+     */
+    final protected function getFromCache($sql, $params=array(), &$results)
+    {
+        $dcache = & self::$_cache;
+        if (!$dcache InstanceOf BaseCache) {
+            return false;
+        }
+        $id = $this->getCacheID($sql, $params);
+        return $dcache->get($id, $results);
+    }
+    // }}}
+
+    // saveCache() {{{
+    /** 
+     *  Save the actual resultset in the cache.
+     *
+     *  @param string $sql    SQL code to execute, it could have variables
+     *  @param array  $params Variables referenced on the SQL
+     *  @param int    $ttl    Cache Time to live
+     *
+     *  @return bool
+     */
+    final protected function saveCache($sql, $params=array(), $ttl=3600)
+    {
+        $dcache = & self::$_cache;
+        if (!$dcache InstanceOf BaseCache) {
+            return false;
+        }
+        $id = $this->getCacheID($sql, $params);
+        return $dcache->add($id, $this->__resultset, $ttl);
+    }
+    // }}}
+
+    // getCacheID() {{{
+    /**
+     *  Generate and return the Cache ID based on the
+     *  SQL and all the params on the queries
+     *
+     *  @param string $sql    SQL code to execute, it could have variables
+     *  @param array  $params Variables referenced on the SQL
+     *
+     *  @return string|bool Cache ID (string) or false
+     */
+    protected function getCacheID($sql, array $params=array())
+    {
+        $key = strtolower($sql);
+        $key = str_replace(array(" ", "\t","\r", "\n"), array("", "", "", ""), $key);
+        $key = md5($key);
+        if (count($params) > 0) {
+            $tparams  = md5(implode(" ", array_keys($params)));
+            $tparams .= md5(implode(" ", $params));
+            $key     .= "_".md5($tparams);
+        }
+        return $key;
+    }
+    // }}}
+
+    // isCacheable() {{{
+    /**
+     *
+     *
+     */
+    protected function isCacheable($sql, $params=array(), &$ttl)
+    {
+        return false;
+    }
+    // }}}
+
 }
+
+
 
 /*
  * Local variables:
@@ -561,4 +684,3 @@ abstract class DB implements Iterator, ArrayAccess
  * vim600: sw=4 ts=4 fdm=marker
  * vim<600: sw=4 ts=4
  */
-
