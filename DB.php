@@ -69,6 +69,9 @@ abstract class DB implements Iterator, ArrayAccess
     final public function __construct()
     {
         $this->__vars = getProperties($this);
+        if (isset($this->ID)) {
+            unset($this->ID);
+        }
     }
     // }}}
 
@@ -193,7 +196,7 @@ abstract class DB implements Iterator, ArrayAccess
         }
         $params = array();
         $this->_loadVars($params);
-        if (isset($this->ID)) {
+        if ($this->valid()) {
             if (!$this->__updatable) {
                 throw new Exception("Modifications not allowed");
             }
@@ -208,6 +211,7 @@ abstract class DB implements Iterator, ArrayAccess
                     return;
                 }
             }
+            $this->ID = $this->__resultset[ $this->__i ]['id'];
             $this->Update($this->getTableName(), $params, array("id"=>$this->ID));
         } else {
             $this->Insert($this->getTableName(), $params);
@@ -355,6 +359,9 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function insert($table, $rows) 
     {
+        if (isset($this->ID)) {
+            $rows['id'] = $this->ID;
+        }
         $cols = array_keys($rows);
         $sql  = "INSERT INTO `{$table}`(".implode(",", $cols).") ";
         $sql .= "VALUES(:".implode(",:", $cols).")";
