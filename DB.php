@@ -176,8 +176,8 @@ abstract class DB implements Iterator, ArrayAccess
     // relations() {{{
     /**
      *  Return an Array of that has the DB to object mapping, 
-     *  where the key is the DB rows and the params the object's
-     *  properties. This function could be overrided by a sub-class
+     *  where the key is the DB rows and the value is the object's
+     *  properties name. This function could be overrided by a sub-class
      *
      *  @return array
      */
@@ -247,8 +247,8 @@ abstract class DB implements Iterator, ArrayAccess
             if (substr($key, 0, 2) == "__" || $key == "ID" || is_null($value)) { 
                 continue;
             }
-            if (is_callable(array(&$this, "${key}_filter"))) {
-                call_user_func_array(array(&$this, "${key}_filter"), array(&$value));
+            if (is_callable(array(&$this, "${value}_filter"))) {
+                call_user_func_array(array(&$this, "${value}_filter"), array(&$value));
             }
             $params[ $key ] = $value;
         }
