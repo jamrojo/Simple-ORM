@@ -47,18 +47,19 @@ function getProperties(DB &$obj)
  */
 abstract class DB implements Iterator, ArrayAccess
 {
-    private static $_dbh    = false;
-    private static $_db     = '';
-    private static $_host   = 'localhost';
-    private static $_user   = '';
-    private static $_pass   = '';
-    private static $_driver = 'mysql';
-    private static $_cache  = null;
+    private static $_dbh     = false;
+    private static $_db      = '';
+    private static $_host    = 'localhost';
+    private static $_user    = '';
+    private static $_pass    = '';
+    private static $_driver  = 'mysql';
+    private static $_cache   = null;
+    private static $_tescape = array('`','`');
     private $__updatable    = true;
     private $__i;
     private $__upadate = false;
     private $__vars;
-    private $__resultset = array();
+    private $__resultset  = array();
 
     // __construct() {{{
     /**
@@ -134,6 +135,18 @@ abstract class DB implements Iterator, ArrayAccess
      */ 
     final public static function setDriver($driver)
     {
+        switch (strtolower($driver)) {
+        case 'mysql':
+            self::$_tescape = array('`','`');
+            break;
+        case 'mssql':
+            self::$_tescape = array('[',']');
+            break;
+        default:
+            self::$_tescape = array('"','"');
+            break;
+
+        }
         self::$_driver = $driver;
     }
     // }}}
@@ -338,7 +351,8 @@ abstract class DB implements Iterator, ArrayAccess
                 $filter .= " $col = :$col AND";
             }
         }
-        $sql = "SELECT * FROM `{$table}`";
+        list($es, $ee) = self::$_tescape;
+        $sql = "SELECT * FROM {$es}{$table}{$ee}";
         if (!empty($filter)) {
             $sql .= " WHERE $filter";
             $sql  = substr($sql, 0, strlen($sql) - 3);
@@ -362,8 +376,9 @@ abstract class DB implements Iterator, ArrayAccess
         if (isset($this->ID)) {
             $rows['id'] = $this->ID;
         }
+        list($es, $ee) = self::$_tescape;
         $cols = array_keys($rows);
-        $sql  = "INSERT INTO `{$table}`(".implode(",", $cols).") ";
+        $sql  = "INSERT INTO {$es}{$table}{$ee}(".implode(",", $cols).") ";
         $sql .= "VALUES(:".implode(",:", $cols).")";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
@@ -401,7 +416,8 @@ abstract class DB implements Iterator, ArrayAccess
         $changes[strlen($changes)-1] = ' ';
         $filter [strlen($filter)-1]  = ' ';
 
-        $sql  = "UPDATE `{$table}` SET $changes WHERE $filter";
+        list($es, $ee) = self::$_tescape;
+        $sql  = "UPDATE {$es}{$table}{$ee} SET $changes WHERE $filter";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
     }
