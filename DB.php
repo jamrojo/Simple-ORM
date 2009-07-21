@@ -362,6 +362,24 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
+    // delete() {{{
+    /**
+     *  Delete the current record on a recordset
+     *
+     *  @return void
+     */
+    function delete()
+    {
+        if (!$this->valid()) {
+            throw new Exception("No valid record");
+        }
+        $this->ID = $this->__recordset[$this->__i]['ID'];
+        list($es, $ee) = self::$_tescape;
+        $sql = "DELETE FROM {$es}{$table}{$ee} WHERE id = :id";
+        $this->simpleQuery($sql, array("id" => $this->ID));
+    }
+    // }}}
+
     // Insert() {{{
     /**
      *  Insert a new row in the table
