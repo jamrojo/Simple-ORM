@@ -288,7 +288,7 @@ abstract class DB implements Iterator, ArrayAccess
             $stmt->execute($params);
             $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
             if ($cacheable) {
-                $this->saveCache($sql, $params);
+                $this->saveCache($sql, $params, $ttl);
             }
         } 
         $this->rewind();
@@ -309,12 +309,22 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function simpleQuery($sql, $params=array()) 
     {
-        if (self::$_dbh === false) {
-            self::_connect();
+        $ttl = 3600;
+        $cacheable = $this->isCacheable($sql, $params, $ttl);
+        $results   = array();
+        if (!$cacheable || !$this->getFromCache($sql, $params, $results)) 
+        {
+            if (self::$_dbh === false) {
+                self::_connect();
+            }
+            $stmt = self::$_dbh->prepare($sql);
+            $stmt->execute($params);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($cacheable) {
+                $this->saveCache($sql, $params, $ttl, $results);
+            }
         }
-        $stmt = self::$_dbh->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $results;
     }
     // }}}
 
@@ -668,14 +678,14 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return bool
      */
-    final protected function saveCache($sql, $params=array(), $ttl=3600)
+    final protected function saveCache($sql, $params=array(), $ttl=3600, $results = null)
     {
         $dcache = & self::$_cache;
         if (!$dcache InstanceOf BaseCache) {
             return false;
         }
         $id = $this->getCacheID($sql, $params);
-        return $dcache->add($id, $this->__resultset, $ttl);
+        return $dcache->add($id, is_array($results) ? $results : $this->__resultset, $ttl);
     }
     // }}}
 
