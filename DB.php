@@ -271,6 +271,7 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function setDataSource($sql, $params=array(), $updatable=false, $ufnc=false)
     {
+        $ttl = 3600;
         $cacheable = $this->isCacheable($sql, $params, $ttl);
         if ($updatable) {
             if ($ufnc !== false && is_callable($ufnc)) {
@@ -283,7 +284,7 @@ abstract class DB implements Iterator, ArrayAccess
             if (self::$_dbh === false) {
                 self::_connect();
             }
-            $stmt              = self::$_dbh->prepare($sql);
+            $stmt = self::$_dbh->prepare($sql);
             $stmt->execute($params);
             $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
             if ($cacheable) {
