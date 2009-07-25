@@ -19,8 +19,7 @@
 
 abstract class BaseCache
 {
-    abstract public function add($key, $records, $ttl = 3600);
-    abstract public function update($key, $records, $ttl = 3600);
+    abstract public function store($key, $records, $ttl = 3600);
     abstract public function get($key, &$records);
     abstract public function delete($key);
 }

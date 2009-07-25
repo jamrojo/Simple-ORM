@@ -28,17 +28,13 @@ final class FileDBCache extends BaseCache
         }
     }
     
-    public function add($key, $records, $ttl = 3600)
+    public function store($key, $records, $ttl = 3600)
     {
         $file       = $this->_getFilePath($key);
         $cache      = new FileCache($records);
         $cache->ttl = $ttl;
         file_put_contents($file, serialize($cache));
         return is_file($file);
-    }
-
-    public function update($key, $records, $ttl = 3600)
-    {
     }
 
     public function get($key, &$records)

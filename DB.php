@@ -47,19 +47,21 @@ function getProperties(DB &$obj)
  */
 abstract class DB implements Iterator, ArrayAccess
 {
-    private static $_dbh     = false;
-    private static $_db      = '';
-    private static $_host    = 'localhost';
-    private static $_user    = '';
-    private static $_pass    = '';
-    private static $_driver  = 'mysql';
-    private static $_cache   = null;
+    private static $_dbh           = false;
+    private static $_db            = '';
+    private static $_host          = 'localhost';
+    private static $_user          = '';
+    private static $_pass          = '';
+    private static $_driver        = 'mysql';
+    private static $_cache         = null;
+    private static $_inTransaction = false;
     private static $_tescape = array('`','`');
     private $__updatable    = true;
     private $__i;
     private $__upadate = false;
     private $__vars;
     private $__resultset  = array();
+    private $_queryCache;
 
     // __construct() {{{
     /**
@@ -67,11 +69,17 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    final public function __construct()
+    final public function __construct(array $initValues=array())
     {
         $this->__vars = getProperties($this);
         if (isset($this->ID)) {
             unset($this->ID);
+        }
+        foreach ($initValues as $key => $values) {
+            if (is_numeric($key[0])) {
+                continue;
+            }
+            $this->$key = $values;
         }
     }
     // }}}
@@ -135,6 +143,10 @@ abstract class DB implements Iterator, ArrayAccess
      */ 
     final public static function setDriver($driver)
     {
+        $drivers = PDO::getAvailableDrivers(); 
+        if (array_search($driver, $drivers) === false) {
+            throw new Exception("There is not $driver PDO driver"); 
+        }
         switch (strtolower($driver)) {
         case 'mysql':
             self::$_tescape = array('`','`');
@@ -149,7 +161,7 @@ abstract class DB implements Iterator, ArrayAccess
         }
         self::$_driver = $driver;
     }
-    // }}}
+    // }}} 
 
     // _connect() {{{
     /**
@@ -157,8 +169,11 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    private function _connect()
+    private static function _connect()
     {
+        if (self::$_dbh !== false) {
+            return;
+        }
         $connstr    = self::$_driver.':host='.self::$_host.';dbname='.self::$_db;
         self::$_dbh = new pdo($connstr,
                 self::$_user,
@@ -279,11 +294,9 @@ abstract class DB implements Iterator, ArrayAccess
             }
         }
         $this->__updatable = $updatable;
-        if (!$cacheable || !$this->getFromCache($sql, $params, $this->__resultset)) 
+        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $this->__resultset)) 
         {
-            if (self::$_dbh === false) {
-                self::_connect();
-            }
+            self::_connect();
             $stmt = self::$_dbh->prepare($sql);
             $stmt->execute($params);
             $this->__resultset = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -312,11 +325,9 @@ abstract class DB implements Iterator, ArrayAccess
         $ttl = 3600;
         $cacheable = $this->isCacheable($sql, $params, $ttl);
         $results   = array();
-        if (!$cacheable || !$this->getFromCache($sql, $params, $results)) 
+        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $results)) 
         {
-            if (self::$_dbh === false) {
-                self::_connect();
-            }
+            self::_connect();
             $stmt = self::$_dbh->prepare($sql);
             $stmt->execute($params);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -402,6 +413,7 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function insert($table, $rows) 
     {
+        self::_connect();
         if (isset($this->ID)) {
             $rows['id'] = $this->ID;
         }
@@ -430,6 +442,7 @@ abstract class DB implements Iterator, ArrayAccess
         if (!is_array($filters) || count($filters) == 0) {
             return false;
         }
+        self::_connect();
         $changes = "";
         $filter  = "";
         foreach (array_keys($rows) as $col) {
@@ -685,7 +698,7 @@ abstract class DB implements Iterator, ArrayAccess
             return false;
         }
         $id = $this->getCacheID($sql, $params);
-        return $dcache->add($id, is_array($results) ? $results : $this->__resultset, $ttl);
+        return $dcache->store($id, is_array($results) ? $results : $this->__resultset, $ttl);
     }
     // }}}
 
@@ -721,6 +734,80 @@ abstract class DB implements Iterator, ArrayAccess
     protected function isCacheable($sql, $params=array(), &$ttl)
     {
         return false;
+    }
+    // }}}
+
+    // disableQueryCache() {{{
+    /**
+     *  Disable temporary the Cache. Even if some query 
+     *  is stored on the cache, it is avoided. But is the actual
+     *  query could be cacheable, it is stored back on the cache.
+     *
+     *  This function is pretty useful to have updated cache.
+     *
+     *  @return void
+     */
+    function disableQueryCache()
+    {
+        $this->_queryCache = false;
+    }
+    // }}}
+
+    // enableQueryCache() {{{
+    /**
+     *  Enable the Cache.
+     *
+     *  @return void
+     */
+    function enableQueryCache()
+    {
+        $this->_queryCache = true;
+    }
+    // }}}
+
+    // Transactions {{{
+    /**
+     *  Begin a transaction
+     *
+     *  @return void
+     */
+    final public static function begin()
+    {
+        if (self::$_inTransaction) {
+            return;
+        }
+        self::_connect();
+        self::$_inTransaction = true;
+        self::$_dbh->beginTransaction(); 
+    }
+
+    /**
+     *  Commit a transaction
+     *
+     *  @return void
+     */
+    final public static function commit()
+    {
+        if (!self::$_inTransaction) {
+            return;
+        }
+        self::$_inTransaction = false;
+        self::$_dbh->commit();
+
+    }
+
+    /**
+     *  Rollback transactions 
+     *
+     *  @return void
+     */
+    final public static function rollback()
+    {
+        if (!self::$_inTransaction) {
+            return;
+        }
+        self::$_inTransaction = false;
+        self::$_dbh->rollback();
     }
     // }}}
 

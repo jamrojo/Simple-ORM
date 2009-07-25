@@ -26,12 +26,7 @@ final class ApcDBCache extends BaseCache
         }
     }
     
-    public function add($key, $records, $ttl = 3600)
-    {
-        return apc_add($key, $records, $ttl);
-    }
-
-    public function update($key, $records, $ttl = 3600)
+    public function store($key, $records, $ttl = 3600)
     {
         return apc_store($key, $records, $ttl);
     }
