@@ -61,7 +61,7 @@ abstract class DB implements Iterator, ArrayAccess
     private $__upadate = false;
     private $__vars;
     private $__resultset  = array();
-    private $_queryCache;
+    private $_queryCache  = true;
 
     // __construct() {{{
     /**
