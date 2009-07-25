@@ -21,7 +21,7 @@ require dirname(__FILE__)."/base_cache.php";
 
 // getProperties() {{{
 /**
- *  Return public 
+ *  Return public visible objects properties.
  *
  *  @param DB &$obj DB sub-class
  *
@@ -55,17 +55,19 @@ abstract class DB implements Iterator, ArrayAccess
     private static $_driver        = 'mysql';
     private static $_cache         = null;
     private static $_inTransaction = false;
-    private static $_tescape = array('`','`');
-    private $__updatable    = true;
+    private static $_tescape       = array('`','`');
+    private $__updatable           = true;
     private $__i;
     private $__upadate = false;
     private $__vars;
-    private $__resultset  = array();
-    private $_queryCache  = true;
+    private $__resultset = array();
+    private $_queryCache = true;
 
     // __construct() {{{
     /**
      *  Class constructor
+     *
+     *  @param array $initValues Initial object properties.
      *
      *  @return void
      */
@@ -226,7 +228,7 @@ abstract class DB implements Iterator, ArrayAccess
         $this->_loadVars($params);
         if ($this->valid()) {
             if (!$this->__updatable) {
-                throw new Exception("Modifications not allowed");
+                throw new Exception("Modifications are not allowed");
             }
             $changes = $this->_getChanges();
             if (is_array($changes)) {
@@ -286,7 +288,7 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function setDataSource($sql, $params=array(), $updatable=false, $ufnc=false)
     {
-        $ttl = 3600;
+        $ttl       = 3600;
         $cacheable = $this->isCacheable($sql, $params, $ttl);
         if ($updatable) {
             if ($ufnc !== false && is_callable($ufnc)) {
@@ -294,8 +296,7 @@ abstract class DB implements Iterator, ArrayAccess
             }
         }
         $this->__updatable = $updatable;
-        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $this->__resultset)) 
-        {
+        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $this->__resultset)) {
             self::_connect();
             $stmt = self::$_dbh->prepare($sql);
             $stmt->execute($params);
@@ -322,11 +323,10 @@ abstract class DB implements Iterator, ArrayAccess
      */
     final protected function simpleQuery($sql, $params=array()) 
     {
-        $ttl = 3600;
+        $ttl       = 3600;
         $cacheable = $this->isCacheable($sql, $params, $ttl);
         $results   = array();
-        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $results)) 
-        {
+        if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $results)) {
             self::_connect();
             $stmt = self::$_dbh->prepare($sql);
             $stmt->execute($params);
@@ -344,8 +344,6 @@ abstract class DB implements Iterator, ArrayAccess
      *  Simple function to filter and load data from the DB.  It takes
      *  the variables from the object's properties. 
      *  
-     *  @param int $cachettl Cache TTL (default -1, no cache)
-     *
      *  @return object A reference to the class it self.
      */
     final public function & load()
@@ -374,7 +372,7 @@ abstract class DB implements Iterator, ArrayAccess
             }
         }
         list($es, $ee) = self::$_tescape;
-        $sql = "SELECT * FROM {$es}{$table}{$ee}";
+        $sql           = "SELECT * FROM {$es}{$table}{$ee}";
         if (!empty($filter)) {
             $sql .= " WHERE $filter";
             $sql  = substr($sql, 0, strlen($sql) - 3);
@@ -395,9 +393,10 @@ abstract class DB implements Iterator, ArrayAccess
         if (!$this->valid()) {
             throw new Exception("No valid record");
         }
-        $this->ID = $this->__recordset[$this->__i]['ID'];
         list($es, $ee) = self::$_tescape;
-        $sql = "DELETE FROM {$es}{$table}{$ee} WHERE id = :id";
+
+        $this->ID = $this->__recordset[$this->__i]['ID'];
+        $sql      = "DELETE FROM {$es}{$table}{$ee} WHERE id = :id";
         $this->simpleQuery($sql, array("id" => $this->ID));
     }
     // }}}
@@ -418,6 +417,7 @@ abstract class DB implements Iterator, ArrayAccess
             $rows['id'] = $this->ID;
         }
         list($es, $ee) = self::$_tescape;
+        
         $cols = array_keys($rows);
         $sql  = "INSERT INTO {$es}{$table}{$ee}(".implode(",", $cols).") ";
         $sql .= "VALUES(:".implode(",:", $cols).")";
@@ -459,6 +459,7 @@ abstract class DB implements Iterator, ArrayAccess
         $filter [strlen($filter)-1]  = ' ';
 
         list($es, $ee) = self::$_tescape;
+
         $sql  = "UPDATE {$es}{$table}{$ee} SET $changes WHERE $filter";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
@@ -670,7 +671,7 @@ abstract class DB implements Iterator, ArrayAccess
      *  
      *  @return bool
      */
-    final protected function getFromCache($sql, $params=array(), &$results)
+    final protected function getFromCache($sql, $params, &$results)
     {
         $dcache = & self::$_cache;
         if (!$dcache InstanceOf BaseCache) {
@@ -685,9 +686,10 @@ abstract class DB implements Iterator, ArrayAccess
     /** 
      *  Save the actual resultset in the cache.
      *
-     *  @param string $sql    SQL code to execute, it could have variables
-     *  @param array  $params Variables referenced on the SQL
-     *  @param int    $ttl    Cache Time to live
+     *  @param string $sql     SQL code to execute, it could have variables
+     *  @param array  $params  Variables referenced on the SQL
+     *  @param int    $ttl     Cache Time to live
+     *  @param array  $results Result set to save in cache
      *
      *  @return bool
      */
@@ -728,10 +730,17 @@ abstract class DB implements Iterator, ArrayAccess
 
     // isCacheable() {{{
     /**
+     *  Abtract method that return true if the actual
+     *  query is cacheable.
      *
+     *  @param string $sql    SQL code
+     *  @param array  $params List of query parameters
+     *  @param int    &$ttl   Time to live of the cache
+     *  
+     *  @return bool
      *
      */
-    protected function isCacheable($sql, $params=array(), &$ttl)
+    protected function isCacheable($sql, array $params, &$ttl)
     {
         return false;
     }
