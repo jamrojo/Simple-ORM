@@ -13,10 +13,10 @@ class User extends DB
      *  @param string $user     Username
      *  @param string $password Password
      */
-    public static function doLogin($user, $password)
+    public static function doLogin($username, $password)
     {
         $user = new User;
-        $user->user = $user;
+        $user->user = $username;
         $user->pass = $password;
         if ($user->load()->valid() === true) {
             $user->visits++;
@@ -27,11 +27,19 @@ class User extends DB
         return false;
     }
 
+    /**
+     *  We store the password's md5.
+     *
+     */
     protected function pass_filter(&$password)
     {
         $password = md5($password);
     }
 
+    /**
+     *  The username can't be changed.
+     *
+     */
     protected function user_filter(&$user)
     {
         $oUser = $this->getOriginalValue('user');

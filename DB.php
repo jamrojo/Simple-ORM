@@ -146,6 +146,7 @@ abstract class DB implements Iterator, ArrayAccess
     final public static function setDriver($driver)
     {
         $drivers = PDO::getAvailableDrivers(); 
+        $driver  = strtolower($driver);
         if (array_search($driver, $drivers) === false) {
             throw new Exception("There is not $driver PDO driver"); 
         }
@@ -176,7 +177,11 @@ abstract class DB implements Iterator, ArrayAccess
         if (self::$_dbh !== false) {
             return;
         }
-        $connstr    = self::$_driver.':host='.self::$_host.';dbname='.self::$_db;
+        if (self::$_driver === "sqlite") {
+            $connstr = "sqlite:".self::$_db;
+        } else {
+            $connstr = self::$_driver.':host='.self::$_host.';dbname='.self::$_db;
+        }
         self::$_dbh = new pdo($connstr,
                 self::$_user,
                 self::$_pass, 
@@ -260,14 +265,15 @@ abstract class DB implements Iterator, ArrayAccess
     final private function _loadVars(&$params)
     {
         foreach ($this->relations() as $key => $value) {
-            $value = $this->$value;
-            if (substr($key, 0, 2) == "__" || $key == "ID" || is_null($value)) { 
+            $val = $this->$value;
+            if (substr($key, 0, 2) == "__" || $key == "ID" || is_null($val)) { 
                 continue;
             }
             if (is_callable(array(&$this, "${value}_filter"))) {
-                call_user_func_array(array(&$this, "${value}_filter"), array(&$value));
+                //call_user_func_array(array(&$this, "${value}_filter"), array(&$val));
+                $this->{"{$value}_filter"}($val);
             }
-            $params[ $key ] = $value;
+            $params[ $key ] = $val;
         }
     }
     // }}}
@@ -496,7 +502,7 @@ abstract class DB implements Iterator, ArrayAccess
         }
         $changes = array();
         foreach ($this->relations() as $key => $value) {
-            if ($this->$value != $pzRecord[$key]) {
+            if (isset($this->$value)  && $this->$value != $pzRecord[$key]) {
                 $changes[$key] = true;
             }
         }

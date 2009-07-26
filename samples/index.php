@@ -3,17 +3,36 @@
 require "../DB.php";
 require "model.php";
 
-DB::setUser("root");
-DB::setDB("sample");
-DB::setDriver("mysql");
+DB::setDB("sample.db");
+DB::setDriver("sqlite");
 
-/*$user = new User;
-$user->user = "david";
-$user->pass = "david";
-$user->save();*/
+try {
+    DB::begin();
+    for ($i = 0; $i < 100; $i++) {
+        $user = new User(array("user"=>"foobar{$i}", "pass" => "nothing"));
+        $user->save();
+    }
+    DB::commit();
+} catch (PDOException $e) {
+    /* probably the table is already populated */
+    DB::rollback();
+}
 
+/* Load users with `user` foobar1 or foobar2 and change its password */
 $users = new User;
+$users->user = array("foobar1", "foobar2");
+DB::begin();
 foreach ($users->load() as $user) {
+    $user->pass = "pass";
     $user->save();
+}
+DB::commit();
+
+foreach (array("foobar1"=>"pass", "foobar10" => "pass") as $user => $pass) {
+    if (User::doLogin($user, $pass)) {
+        print "Welcome user $user\n";
+    } else {
+        print "Bad username or password ($user)\n";
+    }
 }
 ?>
