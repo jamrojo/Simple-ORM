@@ -840,7 +840,7 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    function onUpdate($changes, $sql, $params)
+    protected function onUpdate($changes, $sql, $params)
     {
     }
     // }}}
