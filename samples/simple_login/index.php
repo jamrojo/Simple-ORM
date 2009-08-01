@@ -1,6 +1,6 @@
 <?php
 
-require "../DB.php";
+require "../../DB.php";
 require "model.php";
 
 DB::setDB("sample.db");
