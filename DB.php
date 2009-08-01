@@ -62,6 +62,7 @@ abstract class DB implements Iterator, ArrayAccess
     private $__vars;
     private $__resultset = array();
     private $_queryCache = true;
+    private $_queryparams = array();
 
     // __construct() {{{
     /**
@@ -301,7 +302,8 @@ abstract class DB implements Iterator, ArrayAccess
                 $this->__update = $ufnc;
             }
         }
-        $this->__updatable = $updatable;
+        $this->__updatable  = $updatable;
+        $this->_queryparams = $params; 
         if (!$cacheable || !$this->_queryCache || !$this->getFromCache($sql, $params, $this->__resultset)) {
             self::_connect();
             $stmt = self::$_dbh->prepare($sql);
@@ -378,7 +380,8 @@ abstract class DB implements Iterator, ArrayAccess
             }
         }
         list($es, $ee) = self::$_tescape;
-        $sql           = "SELECT * FROM {$es}{$table}{$ee}";
+
+        $sql = "SELECT * FROM {$es}{$table}{$ee}";
         if (!empty($filter)) {
             $sql .= " WHERE $filter";
             $sql  = substr($sql, 0, strlen($sql) - 3);
@@ -671,6 +674,18 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
+    /* getQueryParams() {{{
+    /**
+     *  Returns a list with the actual query parameters.
+     *
+     *  @return array
+     */
+    protected function getQueryParams()
+    {
+        return (array)$this->_queryparams;
+    }
+    // }}}
+
     // getFromCache() {{{
     /**
      *  get the SQL result from Cache
@@ -840,7 +855,7 @@ abstract class DB implements Iterator, ArrayAccess
      *
      *  @return void
      */
-    protected function onUpdate($changes, $sql, $params)
+    function onUpdate($changes, $sql, $params)
     {
     }
     // }}}
