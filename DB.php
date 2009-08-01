@@ -469,6 +469,10 @@ abstract class DB implements Iterator, ArrayAccess
         $sql  = "UPDATE {$es}{$table}{$ee} SET $changes WHERE $filter";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
+        if (($i=$stmt->rowCount())) {
+            $this->onUpdate($i, $sql, $rows);
+        }
+
     }
     // }}}
 
@@ -823,6 +827,21 @@ abstract class DB implements Iterator, ArrayAccess
         }
         self::$_inTransaction = false;
         self::$_dbh->rollback();
+    }
+    // }}}
+
+    // onUpdate() {{{
+    /**
+     *  Simple abstract method that is triggered on updates.
+     *
+     *  @param int    $changes Number of changed rows
+     *  @param string $sql     SQL statement
+     *  @param array  $params  SQL variables
+     *
+     *  @return void
+     */
+    function onUpdate($changes, $sql, $params)
+    {
     }
     // }}}
 

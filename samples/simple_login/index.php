@@ -28,6 +28,8 @@ foreach ($users->load() as $user) {
 }
 DB::commit();
 
+/* now let's try some queries, the first should work, the other should fail */
+
 foreach (array("foobar1"=>"pass", "foobar10" => "pass") as $user => $pass) {
     if (User::doLogin($user, $pass)) {
         print "Welcome user $user\n";
