@@ -251,7 +251,8 @@ abstract class DB implements Iterator, ArrayAccess
             $this->Update($this->getTableName(), $params, array("id"=>$this->ID));
         } else {
             $this->Insert($this->getTableName(), $params);
-            $this->__resultset[$this->__i] = $params;
+            $this->__resultset[$this->__i]       = $params;
+            $this->__resultset[$this->__i]['id'] = $this->ID;
         }
     }
     // }}}
@@ -510,7 +511,8 @@ abstract class DB implements Iterator, ArrayAccess
         }
         $changes = array();
         foreach ($this->relations() as $key => $value) {
-            if (isset($this->$value)  && $this->$value != $pzRecord[$key]) {
+            if (!isset($pzRecord[$key]) ||
+                 (isset($this->$value)  && $this->$value != $pzRecord[$key])) {
                 $changes[$key] = true;
             }
         }
