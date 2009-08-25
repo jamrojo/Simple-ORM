@@ -57,7 +57,7 @@ abstract class DB implements Iterator, ArrayAccess
     private static $_inTransaction = false;
     private static $_tescape       = array('`','`');
     private $__updatable           = true;
-    private $__i;
+    private $__i = 0;
     private $__upadate = false;
     private $__vars;
     private $__resultset = array();
@@ -251,6 +251,7 @@ abstract class DB implements Iterator, ArrayAccess
             $this->Update($this->getTableName(), $params, array("id"=>$this->ID));
         } else {
             $this->Insert($this->getTableName(), $params);
+            $this->__resultset[$this->__i] = $params;
         }
     }
     // }}}
@@ -428,7 +429,7 @@ abstract class DB implements Iterator, ArrayAccess
         list($es, $ee) = self::$_tescape;
         
         $cols = array_keys($rows);
-        $sql  = "INSERT INTO {$es}{$table}{$ee}(".implode(",", $cols).") ";
+        $sql  = "INSERT INTO {$es}{$table}{$ee}({$es}".implode("{$ee},{$es}", $cols)."{$ee}) ";
         $sql .= "VALUES(:".implode(",:", $cols).")";
         $stmt = self::$_dbh->prepare($sql);
         $stmt->execute($rows);
@@ -568,10 +569,13 @@ abstract class DB implements Iterator, ArrayAccess
     final function & current()
     {
         $pzRecord = & $this->__resultset[ $this->__i ];
-        foreach ((array)$pzRecord as $key => $value) {
-            $this->$key = $value;
+        if (count($pzRecord) > 0) {
+            foreach ((array)$pzRecord as $key => $value) {
+                $this->$key = $value;
+            }
+            $this->ID = $pzRecord['id'];
+            $this->onIterate();
         }
-        $this->ID = $pzRecord['id'];
         return $this;
     }
 
@@ -860,6 +864,16 @@ abstract class DB implements Iterator, ArrayAccess
     }
     // }}}
 
+    // onIterate() {{{
+    /**
+     *  Simple abstract method that is triggered on someone iterates
+     *
+     *  @return void
+     */
+    function onIterate()
+    {
+    }
+    // }}}
 }
 
 
